@@ -1,0 +1,11 @@
+apiVersion: app.nikbonk.cc/v1alpha1
+kind: App
+metadata:
+  labels:
+    app.kubernetes.io/name: understanding-operators
+    app.kubernetes.io/managed-by: kustomize
+  name: app-sample
+spec:
+  image: "docker.io/hi/mycoolimage:1"
+  replicas: 1
+  port: 80
