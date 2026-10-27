@@ -58,6 +58,9 @@ const (
 // For more details, check Reconcile and its Result here:
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.25.0/pkg/reconcile
 func (r *AppReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+	// Shape of every pass: read the App, record that work has started (first pass
+	// only), then converge each child resource. Each ensure* helper owns its own
+	// create-or-update logic and writes its own conditions.
 	log := logf.FromContext(ctx)
 	var app appv1alpha1.App
 
@@ -72,27 +75,24 @@ func (r *AppReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.R
 		return ctrl.Result{}, err
 	}
 
-	// If new resource it will have no conditions so we initialize them first
-	if len(app.Status.Conditions) == 0 {
-		changed := meta.SetStatusCondition(&app.Status.Conditions, metav1.Condition{
-			Type:               typeProgressingApp,
-			Status:             metav1.ConditionUnknown,
-			ObservedGeneration: app.Generation,
-			Reason:             "Reconciling",
-			Message:            "Started reconciliation",
-		})
-
-		if err := r.Status().Update(ctx, &app); err != nil {
-			log.Error(err, "Failed to update App status", "type", typeProgressingApp, "reason", "Reconciling")
+	// A brand-new App has no Progressing condition yet. Record that reconciliation
+	// has started. Once the condition exists, later passes must not overwrite the
+	// outcome they already recorded.
+	if meta.FindStatusCondition(app.Status.Conditions, typeProgressingApp) == nil {
+		if err := r.setCondition(ctx, &app, metav1.Condition{
+			Type:    typeProgressingApp,
+			Status:  metav1.ConditionUnknown,
+			Reason:  "Reconciling",
+			Message: "Started reconciliation",
+		}); err != nil {
 			return ctrl.Result{}, err
 		}
-
-		log.V(1).Info("Initialized status condition", "type", typeProgressingApp,
-			"reason", "Reconciling", "changed", changed)
 	}
 
-	if err := r.Get(ctx, req.NamespacedName, &app); err != nil {
-		log.Error(err, "Failed to re-fetch App.")
+	// Converge the Service: create it if missing, correct it if it drifted.
+	// No re-fetch is needed first, because setCondition handed &app to
+	// Status().Update, which wrote the new resourceVersion back into this object.
+	if err := r.ensureService(ctx, &app); err != nil {
 		return ctrl.Result{}, err
 	}
 
