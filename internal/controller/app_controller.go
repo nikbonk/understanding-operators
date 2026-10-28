@@ -74,6 +74,7 @@ func (r *AppReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.R
 			log.Info("App resource not found.")
 			return ctrl.Result{}, nil
 		}
+
 		// Couldn't read the object for some reason
 		log.Error(err, "Failed to get resource.")
 		return ctrl.Result{}, err
@@ -94,11 +95,31 @@ func (r *AppReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.R
 		r.Recorder.Event(&app, corev1.EventTypeNormal, "ReconcileStarted", "Started reconciling App")
 	}
 
-	// Converge the Service: create it if missing, correct it if it drifted.
-	// No re-fetch is needed first, because setCondition handed &app to
-	// Status().Update, which wrote the new resourceVersion back into this object.
-	if err := r.ensureService(ctx, &app); err != nil {
-		return ctrl.Result{}, err
+	// Converge each child resource. A new resource is one more entry in this list;
+	// the error policy below stays in exactly one place instead of being copied per
+	// helper.
+	//
+	// No re-fetch is needed first: setCondition handed &app to Status().Update,
+	// which wrote the new resourceVersion back into this object.
+	steps := []func(context.Context, *appv1alpha1.App) error{
+		r.ensureService,
+	}
+
+	for _, step := range steps {
+		if err := step(ctx, &app); err != nil {
+			// A conflict means our copy of the App was stale - typically because a
+			// different informer (the Service watch added by Owns) woke this reconcile
+			// before the App cache caught up with our own status write. That is
+			// transient: requeue quietly and let the next pass read fresh state.
+			//
+			// Anything else is a real failure and is returned so controller-runtime
+			// logs it once, with a stack trace.
+			if apierrors.IsConflict(err) {
+				log.V(1).Info("Conflict while reconciling, requeueing", "error", err)
+				return ctrl.Result{Requeue: true}, nil
+			}
+			return ctrl.Result{}, err
+		}
 	}
 
 	return ctrl.Result{}, nil

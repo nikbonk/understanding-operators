@@ -2,6 +2,7 @@ package controller
 
 import (
 	"context"
+	"fmt"
 
 	appv1alpha1 "github.com/nikbonk/understanding-operators/api/v1alpha1"
 	"k8s.io/apimachinery/pkg/api/meta"
@@ -37,8 +38,7 @@ func (r *AppReconciler) setCondition(ctx context.Context, app *appv1alpha1.App, 
 
 	// If Updating the Condition resulted in an error return it so the Reconile() can decide how to react
 	if err := r.Status().Update(ctx, app); err != nil {
-		log.Error(err, "Failed to update App status", "type", cond.Type, "reason", cond.Reason)
-		return err
+		return fmt.Errorf("update App status for condition %s: %w", cond.Type, err)
 	}
 
 	log.V(1).Info("Updated status condition", "type", cond.Type, "status", cond.Status, "reason", cond.Reason)

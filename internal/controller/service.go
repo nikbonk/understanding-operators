@@ -47,6 +47,7 @@ func desiredService(app *appv1alpha1.App) *corev1.Service {
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      app.Name,
 			Namespace: app.Namespace,
+			Labels:    labelsFor(app),
 		},
 		Spec: corev1.ServiceSpec{
 			Selector: labelsFor(app),
