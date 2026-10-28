@@ -152,6 +152,8 @@ func (r *AppReconciler) ensureService(ctx context.Context, app *appv1alpha1.App)
 		}
 
 		log.Info("Created desired Service", "name", desired.Name)
+		r.Recorder.Event(desired, corev1.EventTypeNormal, "Created", "Created Service "+desired.Name)
+		r.Recorder.Event(app, corev1.EventTypeNormal, "ServiceCreated", "Created Service "+desired.Name)
 
 		// Return instead of falling through to the drift check: the server has since
 		// filled in clusterIP, type and ipFamilies, so desired is not what is stored.
@@ -186,6 +188,8 @@ func (r *AppReconciler) ensureService(ctx context.Context, app *appv1alpha1.App)
 		// condition message that surfaces in kubectl describe app.
 		msg := strings.Join(drift, "; ")
 		log.Info("Corrected Service drift", "diffs", drift)
+		r.Recorder.Event(&svc, corev1.EventTypeNormal, "Updated", "Updated Service "+svc.Name+": "+msg)
+		r.Recorder.Event(app, corev1.EventTypeNormal, "ServiceUpdated", "Service drift corrected: "+msg)
 
 		return r.setCondition(ctx, app, metav1.Condition{
 			Type:    typeProgressingApp,

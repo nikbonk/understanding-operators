@@ -25,6 +25,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/client-go/tools/record"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
@@ -33,7 +34,8 @@ import (
 // AppReconciler reconciles a App object
 type AppReconciler struct {
 	client.Client
-	Scheme *runtime.Scheme
+	Scheme   *runtime.Scheme
+	Recorder record.EventRecorder
 }
 
 // conditions
@@ -48,6 +50,7 @@ const (
 // +kubebuilder:rbac:groups=app.nikbonk.cc,resources=apps/finalizers,verbs=update
 // +kubebuilder:rbac:groups=apps,resources=deployments,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups="",resources=services,verbs=get;list;watch;create;update;patch;delete
+//  +kubebuilder:rbac:groups="",resources=events,verbs=create;patch
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
@@ -88,6 +91,7 @@ func (r *AppReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.R
 		}); err != nil {
 			return ctrl.Result{}, err
 		}
+		r.Recorder.Event(&app, corev1.EventTypeNormal, "ReconcileStarted", "Started reconciling App")
 	}
 
 	// Converge the Service: create it if missing, correct it if it drifted.
