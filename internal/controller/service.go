@@ -87,6 +87,10 @@ func serviceDrift(app *appv1alpha1.App, svc *corev1.Service) []string {
 		drift = append(drift, fmt.Sprintf("spec.selector: expected %v, found %v", expectedService.Spec.Selector, svc.Spec.Selector))
 	}
 
+	if !maps.Equal(svc.Labels, expectedService.Labels) {
+		drift = append(drift, fmt.Sprintf("metadata.labels: expected %v, found %v", expectedService.Labels, svc.Labels))
+	}
+
 	// Indexing Ports[0] is only safe once the length is known, and the port count
 	// is part of the contract, so a wrong number is itself drift.
 	switch {
@@ -116,6 +120,7 @@ func serviceDrift(app *appv1alpha1.App, svc *corev1.Service) []string {
 		if want.Protocol != found.Protocol {
 			drift = append(drift, fmt.Sprintf("spec.ports[0].protocol: expected %v, found %v", want.Protocol, found.Protocol))
 		}
+
 	}
 
 	return drift
@@ -178,6 +183,7 @@ func (r *AppReconciler) ensureService(ctx context.Context, app *appv1alpha1.App)
 		// update would fail on every retry and never converge.
 		desired := desiredService(app)
 		svc.Spec.Selector = desired.Spec.Selector
+		svc.Labels = desired.Labels
 		svc.Spec.Ports = desired.Spec.Ports
 
 		if err := r.Update(ctx, &svc); err != nil {
