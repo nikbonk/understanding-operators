@@ -107,7 +107,7 @@ var _ = Describe("serviceDrift", func() {
 			s.Spec.Ports[0].Protocol = corev1.ProtocolUDP
 		}, "spec.ports[0].protocol"),
 		Entry("label added", func(s *corev1.Service) {
-			s.Labels["newLabel"] = "true"
+			s.Labels[testLabelKey] = testLabelValue
 		}, "metadata.labels"),
 	)
 
@@ -115,7 +115,7 @@ var _ = Describe("serviceDrift", func() {
 		svc.Spec.Selector = nil
 		svc.Spec.Ports[0].Port = 80
 		svc.Spec.Ports[0].Name = "web"
-		svc.Labels["newLabel"] = "true"
+		svc.Labels[testLabelKey] = testLabelValue
 
 		drift := serviceDrift(app, svc)
 		Expect(drift).To(HaveLen(4), "drift: %v", drift)

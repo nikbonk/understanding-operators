@@ -25,11 +25,16 @@ import (
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/client-go/tools/record"
+	"k8s.io/client-go/tools/events"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	appv1alpha1 "github.com/nikbonk/understanding-operators/api/v1alpha1"
+)
+
+const (
+	testLabelKey   = "newLabel"
+	testLabelValue = "true"
 )
 
 var _ = Describe("App Controller", func() {
@@ -50,7 +55,7 @@ var _ = Describe("App Controller", func() {
 		// reconciler instead of inheriting the previous spec's state.
 		var (
 			app      *appv1alpha1.App
-			recorder *record.FakeRecorder
+			recorder *events.FakeRecorder
 			r        *AppReconciler
 		)
 
@@ -112,7 +117,7 @@ var _ = Describe("App Controller", func() {
 			// Reconcile calls Recorder.Event unconditionally on the first pass, so a
 			// nil recorder panics. 64 is far above the handful of events a spec emits;
 			// the send is blocking, so too small a buffer deadlocks instead of failing.
-			recorder = record.NewFakeRecorder(64)
+			recorder = events.NewFakeRecorder(64)
 			r = &AppReconciler{
 				Client:   k8sClient,
 				Scheme:   k8sClient.Scheme(),
@@ -165,8 +170,13 @@ var _ = Describe("App Controller", func() {
 			Expect(cond.ObservedGeneration).To(Equal(app.Generation))
 
 			events := drainEvents()
-			Expect(events).To(ContainElement(ContainSubstring("ServiceCreated")))
-			Expect(events).To(ContainElement(ContainSubstring("Created")))
+
+			// Prefixes include the event type because events.FakeRecorder renders
+			// "type reason note". A bare "Created" would also match "ServiceCreated",
+			// which is how the missing Service-scoped event went unnoticed.
+			Expect(events).To(ContainElement(HavePrefix("Normal ReconcileStarted")))
+			Expect(events).To(ContainElement(HavePrefix("Normal Created Created Service")))
+			Expect(events).To(ContainElement(HavePrefix("Normal ServiceCreated Created Service")))
 		})
 
 		It("reports the Service as reconciled on the following pass", func() {
@@ -199,7 +209,7 @@ var _ = Describe("App Controller", func() {
 			var svc corev1.Service
 			Expect(k8sClient.Get(ctx, typeNamespacedName, &svc)).To(Succeed())
 			svc.Spec.Ports[0].Port = 8080
-			svc.Labels["newLabel"] = "true"
+			svc.Labels[testLabelKey] = testLabelValue
 
 			Expect(k8sClient.Update(ctx, &svc)).To(Succeed())
 
@@ -232,8 +242,9 @@ var _ = Describe("App Controller", func() {
 			// one on the App for kubectl describe app. Kubernetes does not propagate
 			// child events to the owner, so both are emitted explicitly.
 			events := drainEvents()
-			Expect(events).To(ContainElement(ContainSubstring("ServiceUpdated")))
-			Expect(events).To(ContainElement(ContainSubstring("Updated Service")))
+
+			Expect(events).To(ContainElement(HavePrefix("Normal Updated Updated Service")))
+			Expect(events).To(ContainElement(HavePrefix("Normal ServiceUpdated Service drift corrected")))
 		})
 
 		// A steady-state pass must produce no API writes at all. This is the

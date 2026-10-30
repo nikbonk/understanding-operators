@@ -18,6 +18,7 @@ package controller
 
 import (
 	"context"
+	"time"
 
 	appv1alpha1 "github.com/nikbonk/understanding-operators/api/v1alpha1"
 	corev1 "k8s.io/api/core/v1"
@@ -25,17 +26,17 @@ import (
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/client-go/tools/record"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
+	"sigs.k8s.io/controller-runtime/pkg/recorder"
 )
 
 // AppReconciler reconciles a App object
 type AppReconciler struct {
 	client.Client
 	Scheme   *runtime.Scheme
-	Recorder record.EventRecorder
+	Recorder recorder.EventRecorder
 }
 
 // conditions
@@ -92,7 +93,7 @@ func (r *AppReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.R
 		}); err != nil {
 			return ctrl.Result{}, err
 		}
-		r.Recorder.Event(&app, corev1.EventTypeNormal, "ReconcileStarted", "Started reconciling App")
+		r.Recorder.Eventf(&app, nil, corev1.EventTypeNormal, "ReconcileStarted", "Reconcile", "Started reconciling App")
 	}
 
 	// Converge each child resource. A new resource is one more entry in this list;
@@ -116,7 +117,7 @@ func (r *AppReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.R
 			// logs it once, with a stack trace.
 			if apierrors.IsConflict(err) {
 				log.V(1).Info("Conflict while reconciling, requeueing", "error", err)
-				return ctrl.Result{Requeue: true}, nil
+				return ctrl.Result{RequeueAfter: time.Second}, nil
 			}
 			return ctrl.Result{}, err
 		}
