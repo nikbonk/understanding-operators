@@ -99,7 +99,7 @@ var _ = Describe("App Controller", func() {
 			//
 			// Local variables rather than ptr.To, so the fixture needs no extra
 			// dependency and the address-of syntax stays visible.
-			image, replicas, port := "nginx:1.27", 1, 80
+			image, replicas, port := "nginx:1.27", 1, 8080
 
 			app = &appv1alpha1.App{
 				ObjectMeta: metav1.ObjectMeta{
@@ -153,7 +153,7 @@ var _ = Describe("App Controller", func() {
 			// The Service must point at the labels the Deployment's pods will carry.
 			Expect(svc.Spec.Selector).To(Equal(labelsFor(app)))
 			Expect(svc.Spec.Ports).To(HaveLen(1))
-			Expect(svc.Spec.Ports[0].Port).To(Equal(int32(80)))
+			Expect(svc.Spec.Ports[0].Port).To(Equal(int32(8080)))
 			Expect(svc.Spec.Ports[0].TargetPort.IntVal).To(Equal(int32(80)))
 			Expect(svc.Spec.Ports[0].Name).To(Equal("http"))
 
@@ -208,7 +208,7 @@ var _ = Describe("App Controller", func() {
 			// and the whole spec would pass without testing anything.
 			var svc corev1.Service
 			Expect(k8sClient.Get(ctx, typeNamespacedName, &svc)).To(Succeed())
-			svc.Spec.Ports[0].Port = 8080
+			svc.Spec.Ports[0].Port = 8081
 			svc.Labels[testLabelKey] = testLabelValue
 
 			Expect(k8sClient.Update(ctx, &svc)).To(Succeed())
@@ -219,11 +219,11 @@ var _ = Describe("App Controller", func() {
 			Expect(reconcileOnce()).To(Succeed())
 
 			// Re-read instead of asserting on svc. svc is the object we wrote, which
-			// still says 8080 and still carries newLabel; only the server knows what
+			// still says 8081 and still carries newLabel; only the server knows what
 			// the controller did to it.
 			var corrected corev1.Service
 			Expect(k8sClient.Get(ctx, typeNamespacedName, &corrected)).To(Succeed())
-			Expect(corrected.Spec.Ports[0].Port).To(Equal(int32(80)))
+			Expect(corrected.Spec.Ports[0].Port).To(Equal(int32(8080)))
 			Expect(corrected.Labels).To(Equal(labelsFor(app)))
 
 			// The condition reports what this pass did, so it is True: an update

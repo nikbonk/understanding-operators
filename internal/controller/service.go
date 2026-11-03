@@ -54,7 +54,7 @@ func desiredService(app *appv1alpha1.App) *corev1.Service {
 			Ports: []corev1.ServicePort{{
 				Name:       "http",
 				Port:       port,
-				TargetPort: intstr.FromInt32(port),
+				TargetPort: intstr.FromInt32(nginxContainerPort),
 				Protocol:   corev1.ProtocolTCP,
 			}},
 		},

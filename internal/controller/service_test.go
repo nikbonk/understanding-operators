@@ -56,15 +56,16 @@ var _ = Describe("serviceDrift", func() {
 		// The stored Service still matches the old spec, so the comparison must be
 		// driven by the App, not by whether svc equals some snapshot of itself.
 		//
-		// Two entries, not one: desiredService derives both Port and TargetPort from
-		// Spec.Port, so a port change is two fields of drift.
+		// One entry, not two: Spec.Port drives only the Service's exposed port.
+		// TargetPort stays pinned to nginxContainerPort, so it must not appear in the
+		// diff - the NotTo below is what enforces that.
 		changed := 9090
 		app.Spec.Port = &changed
 
 		drift := serviceDrift(app, svc)
-		Expect(drift).To(HaveLen(2), "drift: %v", drift)
+		Expect(drift).To(HaveLen(1), "drift: %v", drift)
 		Expect(drift).To(ContainElement(ContainSubstring("spec.ports[0].port")))
-		Expect(drift).To(ContainElement(ContainSubstring("spec.ports[0].targetPort")))
+		Expect(drift).NotTo(ContainElement(ContainSubstring("spec.ports[0].targetPort")))
 	})
 
 	DescribeTable("reports exactly one field of drift",
