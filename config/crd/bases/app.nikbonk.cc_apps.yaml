@@ -41,6 +41,24 @@ spec:
             properties:
               image:
                 type: string
+              nginxConfig:
+                description: NginxConfig customises the server block rendered into
+                  the nginx ConfigMap.
+                properties:
+                  clientMaxBodySize:
+                    description: |-
+                      ClientMaxBodySize caps the request body size using nginx size syntax,
+                      for example "1m" or "512k".
+                    pattern: ^[0-9]+[kKmMgG]?$
+                    type: string
+                  serverName:
+                    description: |-
+                      ServerName is the value of the server_name directive. "_" is the
+                      conventional catch-all that matches any Host header.
+                    maxLength: 253
+                    pattern: ^[a-zA-Z0-9.*_-]+$
+                    type: string
+                type: object
               port:
                 maximum: 65535
                 minimum: 1

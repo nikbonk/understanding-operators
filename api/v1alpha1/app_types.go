@@ -43,6 +43,25 @@ type AppSpec struct {
 	// +kubebuilder:validation:Minimum=1
 	// +kubebuilder:validation:Maximum=65535
 	Port *int `json:"port"`
+
+	// +optional
+	NginxConfig *NginxConfig `json:"nginxConfig,omitempty"`
+}
+
+// NginxConfig customises the server block rendered into the nginx ConfigMap.
+type NginxConfig struct {
+	// ServerName is the value of the server_name directive. "_" is the
+	// conventional catch-all that matches any Host header.
+	// +optional
+	// +kubebuilder:validation:MaxLength=253
+	// +kubebuilder:validation:Pattern=`^[a-zA-Z0-9.*_-]+$`
+	ServerName *string `json:"serverName,omitempty"`
+
+	// ClientMaxBodySize caps the request body size using nginx size syntax,
+	// for example "1m" or "512k".
+	// +optional
+	// +kubebuilder:validation:Pattern=`^[0-9]+[kKmMgG]?$`
+	ClientMaxBodySize *string `json:"clientMaxBodySize,omitempty"`
 }
 
 // AppStatus defines the observed state of App.
