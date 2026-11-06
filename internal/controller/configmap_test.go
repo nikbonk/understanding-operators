@@ -3,6 +3,8 @@ package controller
 import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	appv1alpha1 "github.com/nikbonk/understanding-operators/api/v1alpha1"
 )
@@ -52,5 +54,39 @@ var _ = Describe("renderNginxConfig", func() {
 		Expect(got).To(ContainSubstring("try_files $uri $uri/ =404;"))
 		Expect(got).To(HaveSuffix("}\n"))
 
+	})
+})
+
+var _ = Describe("desiredNginxConfigMap", func() {
+	var (
+		app *appv1alpha1.App
+		cm  *corev1.ConfigMap
+	)
+
+	BeforeEach(func() {
+		serverName := "demo"
+		nginxConfig := appv1alpha1.NginxConfig{
+			ServerName: &serverName,
+		}
+		image, replicas, port := "nginx:1.27", 1, 8080
+
+		app = &appv1alpha1.App{
+			ObjectMeta: metav1.ObjectMeta{Name: "demo", Namespace: "default"},
+			Spec: appv1alpha1.AppSpec{
+				Image:       &image,
+				Replicas:    &replicas,
+				Port:        &port,
+				NginxConfig: &nginxConfig,
+			},
+		}
+		cm = desiredNginxConfigMap(app)
+	})
+
+	It("creates the expected ConfigMap", func() {
+		Expect(cm.Name).To(Equal("demo-nginx-conf"))
+		Expect(cm.Namespace).To(Equal("default"))
+		Expect(len(cm.Data)).To(Equal(1))
+		Expect(cm.Data["default.conf"]).To(ContainSubstring("server_name demo;"))
+		Expect(cm.Data["default.conf"]).To(ContainSubstring("listen 80;"))
 	})
 })
