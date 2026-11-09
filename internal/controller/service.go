@@ -131,7 +131,7 @@ func serviceDrift(app *appv1alpha1.App, svc *corev1.Service) []string {
 //
 // Get-or-create-or-update: a missing Service is created, a drifted one is
 // corrected field by field, and an in-sync one produces no API writes at all.
-func (r *AppReconciler) ensureService(ctx context.Context, app *appv1alpha1.App) error {
+func (r *AppReconciler) ensureService(ctx context.Context, app *appv1alpha1.App) (bool, error) {
 	log := logf.FromContext(ctx)
 	var svc corev1.Service
 	reqSvc := types.NamespacedName{Namespace: app.Namespace, Name: app.Name}
@@ -149,12 +149,12 @@ func (r *AppReconciler) ensureService(ctx context.Context, app *appv1alpha1.App)
 		// the owning App.
 		if err := controllerutil.SetControllerReference(app, desired, r.Scheme); err != nil {
 			log.Error(err, "Failed to set owner on Resource")
-			return err
+			return false, err
 		}
 
 		if err := r.Create(ctx, desired); err != nil {
 			log.Error(err, "Failed to create Service")
-			return err
+			return false, err
 		}
 
 		log.Info("Created desired Service", "name", desired.Name)
@@ -167,16 +167,12 @@ func (r *AppReconciler) ensureService(ctx context.Context, app *appv1alpha1.App)
 		// Return instead of falling through to the drift check: the server has since
 		// filled in clusterIP, type and ipFamilies, so desired is not what is stored.
 		// The create event drives the next pass, which compares against the real object.
-		return r.setCondition(ctx, app, metav1.Condition{
-			Type:    typeProgressingApp,
-			Status:  metav1.ConditionTrue,
-			Reason:  "ServiceCreated",
-			Message: "Service created"})
+		return true, nil
 	}
 
 	if err != nil {
 		log.Error(err, "Failed to get Service resource")
-		return err
+		return false, err
 	}
 
 	drift := serviceDrift(app, &svc)
@@ -191,7 +187,7 @@ func (r *AppReconciler) ensureService(ctx context.Context, app *appv1alpha1.App)
 
 		if err := r.Update(ctx, &svc); err != nil {
 			log.Error(err, "Failed to reconcile Service")
-			return err
+			return false, err
 		}
 
 		// One string, two consumers: the log for whoever is debugging, and the
@@ -201,20 +197,10 @@ func (r *AppReconciler) ensureService(ctx context.Context, app *appv1alpha1.App)
 		r.Recorder.Eventf(&svc, nil, corev1.EventTypeNormal, "Updated", "UpdateService", "Updated Service %s: %s", svc.Name, msg)
 		r.Recorder.Eventf(app, nil, corev1.EventTypeNormal, "ServiceUpdated", "UpdateService", "Service drift corrected: %s", msg)
 
-		return r.setCondition(ctx, app, metav1.Condition{
-			Type:    typeProgressingApp,
-			Status:  metav1.ConditionTrue,
-			Reason:  "ServiceUpdated",
-			Message: msg,
-		})
+		return true, nil
 	}
 
 	// In sync. setCondition returns early when the stored condition already holds
 	// these values, so a steady pass performs no API writes at all.
-	return r.setCondition(ctx, app, metav1.Condition{
-		Type:    typeProgressingApp,
-		Status:  metav1.ConditionFalse,
-		Reason:  "ServiceReconciled",
-		Message: "Service is in sync",
-	})
+	return false, nil
 }

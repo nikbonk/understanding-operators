@@ -159,7 +159,7 @@ var _ = Describe("App Controller", func() {
 			cond := progressing()
 			Expect(cond).NotTo(BeNil())
 			Expect(cond.Status).To(Equal(metav1.ConditionTrue))
-			Expect(cond.Reason).To(Equal("ServiceCreated"))
+			Expect(cond.Reason).To(Equal("ChildUpdated"))
 			// Set by setCondition, not by the test: it records which spec revision
 			// this outcome describes.
 			Expect(cond.ObservedGeneration).To(Equal(app.Generation))
@@ -184,7 +184,7 @@ var _ = Describe("App Controller", func() {
 			cond := progressing()
 			Expect(cond).NotTo(BeNil())
 			Expect(cond.Status).To(Equal(metav1.ConditionFalse))
-			Expect(cond.Reason).To(Equal("ServiceReconciled"))
+			Expect(cond.Reason).To(Equal("ReconcileComplete"))
 
 			drainEvents()
 		})
@@ -221,17 +221,13 @@ var _ = Describe("App Controller", func() {
 			Expect(corrected.Spec.Ports[0].Port).To(Equal(int32(8080)))
 			Expect(corrected.Labels).To(Equal(labelsFor(app)))
 
-			// The condition reports what this pass did, so it is True: an update
-			// happened. Convergence to False/ServiceReconciled is the next pass's job
-			// and is covered by the spec above.
+			// The condition is an aggregate now: it says a child changed, not which one
+			// or how. Convergence to False/ReconcileComplete is the next pass's job and
+			// is covered by the spec above.
 			cond := progressing()
 			Expect(cond).NotTo(BeNil())
 			Expect(cond.Status).To(Equal(metav1.ConditionTrue))
-			Expect(cond.Reason).To(Equal("ServiceUpdated"))
-			// serviceDrift builds these strings once and both the log and the
-			// condition reuse them, so asserting the message also pins the diff text.
-			Expect(cond.Message).To(ContainSubstring("spec.ports[0].port"))
-			Expect(cond.Message).To(ContainSubstring("metadata.labels"))
+			Expect(cond.Reason).To(Equal("ChildUpdated"))
 
 			// Two events, deliberately: one on the Service for kubectl describe svc,
 			// one on the App for kubectl describe app. Kubernetes does not propagate
@@ -240,6 +236,11 @@ var _ = Describe("App Controller", func() {
 
 			Expect(events).To(ContainElement(HavePrefix("Normal Updated Updated Service")))
 			Expect(events).To(ContainElement(HavePrefix("Normal ServiceUpdated Service drift corrected")))
+			// serviceDrift builds these strings once and the helper reuses them for the
+			// event message, so the per-field diff is still pinned - just in the event
+			// stream rather than the condition message.
+			Expect(events).To(ContainElement(ContainSubstring("spec.ports[0].port")))
+			Expect(events).To(ContainElement(ContainSubstring("metadata.labels")))
 		})
 
 		// A steady-state pass must produce no API writes at all. This is the

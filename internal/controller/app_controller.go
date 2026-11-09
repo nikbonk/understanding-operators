@@ -63,9 +63,9 @@ const (
 // For more details, check Reconcile and its Result here:
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.25.0/pkg/reconcile
 func (r *AppReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	// Shape of every pass: read the App, record that work has started (first pass
-	// only), then converge each child resource. Each ensure* helper owns its own
-	// create-or-update logic and writes its own conditions.
+	// Shape of every pass: read the App, converge each child resource, then record a
+	// single aggregate Progressing condition describing what the pass did. Helpers
+	// return whether they changed anything; none of them writes status.
 	log := logf.FromContext(ctx)
 	var app appv1alpha1.App
 
@@ -81,33 +81,25 @@ func (r *AppReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.R
 		return ctrl.Result{}, err
 	}
 
-	// A brand-new App has no Progressing condition yet. Record that reconciliation
-	// has started. Once the condition exists, later passes must not overwrite the
-	// outcome they already recorded.
+	// Emit the "started" event exactly once. A brand-new App has no Progressing
+	// condition yet, and every pass writes one at the end, so this gate can only be
+	// true on the first pass.
 	if meta.FindStatusCondition(app.Status.Conditions, typeProgressingApp) == nil {
-		if err := r.setCondition(ctx, &app, metav1.Condition{
-			Type:    typeProgressingApp,
-			Status:  metav1.ConditionUnknown,
-			Reason:  "Reconciling",
-			Message: "Started reconciliation",
-		}); err != nil {
-			return ctrl.Result{}, err
-		}
 		r.Recorder.Eventf(&app, nil, corev1.EventTypeNormal, "ReconcileStarted", "Reconcile", "Started reconciling App")
 	}
 
 	// Converge each child resource. A new resource is one more entry in this list;
 	// the error policy below stays in exactly one place instead of being copied per
-	// helper.
-	//
-	// No re-fetch is needed first: setCondition handed &app to Status().Update,
-	// which wrote the new resourceVersion back into this object.
-	steps := []func(context.Context, *appv1alpha1.App) error{
+	// helper. Each step reports whether it changed anything, which feeds the single
+	// condition write at the end of the pass.
+	steps := []func(context.Context, *appv1alpha1.App) (bool, error){
 		r.ensureService,
 	}
 
+	changedAny := false
 	for _, step := range steps {
-		if err := step(ctx, &app); err != nil {
+		changed, err := step(ctx, &app)
+		if err != nil {
 			// A conflict means our copy of the App was stale - typically because a
 			// different informer (the Service watch added by Owns) woke this reconcile
 			// before the App cache caught up with our own status write. That is
@@ -121,6 +113,28 @@ func (r *AppReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.R
 			}
 			return ctrl.Result{}, err
 		}
+		changedAny = changed || changedAny
+	}
+
+	cond := metav1.Condition{
+		Type:    typeProgressingApp,
+		Status:  metav1.ConditionFalse,
+		Reason:  "ReconcileComplete",
+		Message: "Child resource reconciled",
+	}
+
+	if changedAny {
+		cond.Status = metav1.ConditionTrue
+		cond.Reason = "ChildUpdated"
+		cond.Message = "Reconciling child resources"
+	}
+
+	if err := r.setCondition(ctx, &app, cond); err != nil {
+		if apierrors.IsConflict(err) {
+			log.V(1).Info("Conflict while writing status, requeuing", "error", err)
+			return ctrl.Result{RequeueAfter: time.Second}, nil
+		}
+		return ctrl.Result{}, err
 	}
 
 	return ctrl.Result{}, nil
