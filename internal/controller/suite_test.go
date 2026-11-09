@@ -52,7 +52,12 @@ const (
 	testLabelValue = "true"
 	testImage      = "nginx:1.27"
 	testAppName    = "demo"
+	testNamespace  = "default"
 	testPort       = 8080
+
+	// testDriftedConf stands in for ConfigMap content that does not match what the
+	// controller renders. It never reaches nginx, so it need not be valid.
+	testDriftedConf = "server { listen 9999; }"
 )
 
 func TestControllers(t *testing.T) {

@@ -54,7 +54,7 @@ var _ = Describe("renderNginxConfig", func() {
 	})
 })
 
-var _ = Describe("desiredNginxConfigMap", func() {
+var _ = Describe("desiredNginxConfConfigMap", func() {
 	var (
 		app *appv1alpha1.App
 		cm  *corev1.ConfigMap
@@ -68,7 +68,7 @@ var _ = Describe("desiredNginxConfigMap", func() {
 		image, replicas, port := testImage, 1, testPort
 
 		app = &appv1alpha1.App{
-			ObjectMeta: metav1.ObjectMeta{Name: "demo", Namespace: "default"},
+			ObjectMeta: metav1.ObjectMeta{Name: "demo", Namespace: testNamespace},
 			Spec: appv1alpha1.AppSpec{
 				Image:       &image,
 				Replicas:    &replicas,
@@ -76,14 +76,72 @@ var _ = Describe("desiredNginxConfigMap", func() {
 				NginxConfig: &nginxConfig,
 			},
 		}
-		cm = desiredNginxConfigMap(app)
+		cm = desiredNginxConfConfigMap(app)
 	})
 
 	It("creates the expected ConfigMap", func() {
 		Expect(cm.Name).To(Equal("demo-nginx-conf"))
-		Expect(cm.Namespace).To(Equal("default"))
+		Expect(cm.Namespace).To(Equal(testNamespace))
 		Expect(cm.Data).To(HaveLen(1))
 		Expect(cm.Data["default.conf"]).To(ContainSubstring("server_name demo;"))
 		Expect(cm.Data["default.conf"]).To(ContainSubstring("listen 80;"))
+	})
+})
+
+var _ = Describe("nginxConfDrift", func() {
+	var (
+		app *appv1alpha1.App
+		cm  *corev1.ConfigMap
+	)
+
+	BeforeEach(func() {
+		image, replicas, port := testImage, 1, testPort
+
+		app = &appv1alpha1.App{
+			ObjectMeta: metav1.ObjectMeta{Name: testAppName, Namespace: testNamespace},
+			Spec: appv1alpha1.AppSpec{
+				Image:    &image,
+				Replicas: &replicas,
+				Port:     &port,
+			},
+		}
+
+		// Build from the same constructor the controller uses, so the baseline cannot
+		// drift away from the implementation.
+		cm = desiredNginxConfConfigMap(app)
+	})
+
+	It("reports no drift for a freshly built ConfigMap", func() {
+		Expect(nginxConfDrift(app, cm)).To(BeEmpty())
+	})
+
+	DescribeTable("reports exactly one field of drift",
+		func(mutate func(*corev1.ConfigMap), want string) {
+			mutate(cm)
+
+			drift := nginxConfDrift(app, cm)
+			Expect(drift).To(HaveLen(1), "drift: %v", drift)
+			Expect(drift[0]).To(ContainSubstring(want))
+		},
+		Entry("config content changed", func(c *corev1.ConfigMap) {
+			c.Data["default.conf"] = testDriftedConf
+		}, `data["default.conf"]`),
+		Entry("config key removed", func(c *corev1.ConfigMap) {
+			delete(c.Data, "default.conf")
+		}, `data["default.conf"]`),
+		Entry("unexpected config key", func(c *corev1.ConfigMap) {
+			c.Data["extra.conf"] = "server {}"
+		}, `data["extra.conf"]`),
+		Entry("label added", func(c *corev1.ConfigMap) {
+			c.Labels[testLabelKey] = testLabelValue
+		}, "metadata.labels"),
+	)
+
+	It("reports every drifted field at once", func() {
+		cm.Data["default.conf"] = testDriftedConf
+		cm.Data["extra.conf"] = "server {}"
+		cm.Labels[testLabelKey] = testLabelValue
+
+		Expect(nginxConfDrift(app, cm)).To(HaveLen(3))
 	})
 })

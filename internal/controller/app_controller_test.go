@@ -122,14 +122,21 @@ var _ = Describe("App Controller", func() {
 
 		AfterEach(func() {
 			// envtest runs only etcd and kube-apiserver, not kube-controller-manager,
-			// so owner-reference garbage collection never fires here. The Service must
-			// be removed by hand or it leaks into the next spec.
+			// so owner-reference garbage collection never fires here. Child resources
+			// must be removed by hand or they leak into the next spec.
 			By("Cleaning up the Service")
 			svc := &corev1.Service{ObjectMeta: metav1.ObjectMeta{
 				Name:      resourceName,
 				Namespace: resourceNamespace,
 			}}
 			Expect(client.IgnoreNotFound(k8sClient.Delete(ctx, svc))).To(Succeed())
+
+			By("Cleaning up the ConfigMap")
+			cm := &corev1.ConfigMap{ObjectMeta: metav1.ObjectMeta{
+				Name:      resourceName + "-nginx-conf",
+				Namespace: resourceNamespace,
+			}}
+			Expect(client.IgnoreNotFound(k8sClient.Delete(ctx, cm))).To(Succeed())
 
 			By("Cleaning up the App")
 			resource := &appv1alpha1.App{ObjectMeta: metav1.ObjectMeta{
@@ -241,6 +248,64 @@ var _ = Describe("App Controller", func() {
 			// stream rather than the condition message.
 			Expect(events).To(ContainElement(ContainSubstring("spec.ports[0].port")))
 			Expect(events).To(ContainElement(ContainSubstring("metadata.labels")))
+		})
+
+		It("creates the nginx ConfigMap on the first pass", func() {
+			Expect(reconcileOnce()).To(Succeed())
+
+			key := types.NamespacedName{
+				Name:      nginxConfConfigMapName(app),
+				Namespace: resourceNamespace,
+			}
+
+			var cm corev1.ConfigMap
+			Expect(k8sClient.Get(ctx, key, &cm)).To(Succeed())
+
+			// The rendered block is the entire purpose of this object, so assert the
+			// directives rather than merely its existence.
+			Expect(cm.Data).To(HaveKey("default.conf"))
+			Expect(cm.Data["default.conf"]).To(ContainSubstring("server_name _;"))
+			Expect(cm.Data["default.conf"]).To(ContainSubstring("listen 80;"))
+			Expect(cm.Labels).To(Equal(labelsFor(app)))
+
+			// Controlled by, not merely owned: Owns(&corev1.ConfigMap{}) and garbage
+			// collection both depend on the controller reference.
+			Expect(metav1.IsControlledBy(&cm, app)).To(BeTrue())
+
+			Expect(drainEvents()).To(ContainElement(HavePrefix("Normal ConfigMapCreated")))
+		})
+
+		It("corrects ConfigMap drift", func() {
+			Expect(reconcileOnce()).To(Succeed())
+			Expect(reconcileOnce()).To(Succeed())
+
+			key := types.NamespacedName{
+				Name:      nginxConfConfigMapName(app),
+				Namespace: resourceNamespace,
+			}
+
+			var cm corev1.ConfigMap
+			Expect(k8sClient.Get(ctx, key, &cm)).To(Succeed())
+			cm.Data["default.conf"] = testDriftedConf
+			Expect(k8sClient.Update(ctx, &cm)).To(Succeed())
+
+			Expect(reconcileOnce()).To(Succeed())
+
+			var corrected corev1.ConfigMap
+			Expect(k8sClient.Get(ctx, key, &corrected)).To(Succeed())
+			Expect(corrected.Data["default.conf"]).To(ContainSubstring("listen 80;"))
+			Expect(corrected.Data["default.conf"]).NotTo(ContainSubstring("9999"))
+
+			// The condition is aggregate: it reports that a child changed, not which
+			// field. The per-key detail is asserted on the events below.
+			cond := progressing()
+			Expect(cond).NotTo(BeNil())
+			Expect(cond.Status).To(Equal(metav1.ConditionTrue))
+			Expect(cond.Reason).To(Equal("ChildUpdated"))
+
+			events := drainEvents()
+			Expect(events).To(ContainElement(HavePrefix("Normal Updated Updated ConfigMap")))
+			Expect(events).To(ContainElement(ContainSubstring(`data["default.conf"]`)))
 		})
 
 		// A steady-state pass must produce no API writes at all. This is the
