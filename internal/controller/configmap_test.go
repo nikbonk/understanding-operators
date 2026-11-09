@@ -9,9 +9,6 @@ import (
 	appv1alpha1 "github.com/nikbonk/understanding-operators/api/v1alpha1"
 )
 
-// simple helper for cleaner tests
-func strPtr(s string) *string { return &s }
-
 var _ = Describe("effectiveNginxConfig", func() {
 	DescribeTable("resolves optional fields to concrete values",
 		func(cfg *appv1alpha1.NginxConfig, wantServerName, wantMaxBodySize string) {
@@ -27,14 +24,14 @@ var _ = Describe("effectiveNginxConfig", func() {
 		Entry("empty block falls back entirely",
 			&appv1alpha1.NginxConfig{}, "_", "1m",
 		),
-		Entry("server name set, body size ommited",
-			&appv1alpha1.NginxConfig{ServerName: strPtr("example.com")}, "example.com", "1m",
+		Entry("server name set, body size omitted",
+			&appv1alpha1.NginxConfig{ServerName: new("example.com")}, "example.com", "1m",
 		),
-		Entry("server ommited, body size set",
-			&appv1alpha1.NginxConfig{ClientMaxBodySize: strPtr("5m")}, "_", "5m",
+		Entry("server omitted, body size set",
+			&appv1alpha1.NginxConfig{ClientMaxBodySize: new("5m")}, "_", "5m",
 		),
 		Entry("server name explicitly empty",
-			&appv1alpha1.NginxConfig{ServerName: strPtr("")}, "_", "1m",
+			&appv1alpha1.NginxConfig{ServerName: new("")}, "_", "1m",
 		),
 	)
 })
@@ -64,11 +61,11 @@ var _ = Describe("desiredNginxConfigMap", func() {
 	)
 
 	BeforeEach(func() {
-		serverName := "demo"
+		serverName := testAppName
 		nginxConfig := appv1alpha1.NginxConfig{
 			ServerName: &serverName,
 		}
-		image, replicas, port := "nginx:1.27", 1, 8080
+		image, replicas, port := testImage, 1, testPort
 
 		app = &appv1alpha1.App{
 			ObjectMeta: metav1.ObjectMeta{Name: "demo", Namespace: "default"},
@@ -85,7 +82,7 @@ var _ = Describe("desiredNginxConfigMap", func() {
 	It("creates the expected ConfigMap", func() {
 		Expect(cm.Name).To(Equal("demo-nginx-conf"))
 		Expect(cm.Namespace).To(Equal("default"))
-		Expect(len(cm.Data)).To(Equal(1))
+		Expect(cm.Data).To(HaveLen(1))
 		Expect(cm.Data["default.conf"]).To(ContainSubstring("server_name demo;"))
 		Expect(cm.Data["default.conf"]).To(ContainSubstring("listen 80;"))
 	})

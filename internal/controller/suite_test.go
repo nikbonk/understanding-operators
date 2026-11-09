@@ -47,6 +47,14 @@ var (
 	k8sClient client.Client
 )
 
+const (
+	testLabelKey   = "newLabel"
+	testLabelValue = "true"
+	testImage      = "nginx:1.27"
+	testAppName    = "demo"
+	testPort       = 8080
+)
+
 func TestControllers(t *testing.T) {
 	RegisterFailHandler(Fail)
 

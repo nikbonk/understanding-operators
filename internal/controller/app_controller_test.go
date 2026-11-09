@@ -32,11 +32,6 @@ import (
 	appv1alpha1 "github.com/nikbonk/understanding-operators/api/v1alpha1"
 )
 
-const (
-	testLabelKey   = "newLabel"
-	testLabelValue = "true"
-)
-
 var _ = Describe("App Controller", func() {
 	Context("When reconciling a resource", func() {
 		const (
@@ -99,7 +94,7 @@ var _ = Describe("App Controller", func() {
 			//
 			// Local variables rather than ptr.To, so the fixture needs no extra
 			// dependency and the address-of syntax stays visible.
-			image, replicas, port := "nginx:1.27", 1, 8080
+			image, replicas, port := testImage, 1, 8080
 
 			app = &appv1alpha1.App{
 				ObjectMeta: metav1.ObjectMeta{

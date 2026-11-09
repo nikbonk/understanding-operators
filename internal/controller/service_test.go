@@ -21,10 +21,10 @@ var _ = Describe("serviceDrift", func() {
 	)
 
 	BeforeEach(func() {
-		image, replicas, port := "nginx:1.27", 1, 8080
+		image, replicas, port := testImage, 1, testPort
 
 		app = &appv1alpha1.App{
-			ObjectMeta: metav1.ObjectMeta{Name: "demo", Namespace: "default"},
+			ObjectMeta: metav1.ObjectMeta{Name: testAppName, Namespace: "default"},
 			Spec: appv1alpha1.AppSpec{
 				Image:    &image,
 				Replicas: &replicas,
