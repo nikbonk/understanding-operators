@@ -16,23 +16,6 @@ import (
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 )
 
-// service labels
-const (
-	labelInstance = "app.kubernetes.io/instance"
-	labelName     = "app.kubernetes.io/name"
-)
-
-// labelsFor returns the labels shared by everything managed on behalf of app.
-// This map is the contract between the Service's Spec.Selector and (later) the
-// Deployment's pod template labels. If the two ever diverge, the Service gets no
-// Endpoints and nothing reports an error, so both callers must read it from here.
-func labelsFor(app *appv1alpha1.App) map[string]string {
-	return map[string]string{
-		labelInstance: app.Name,
-		labelName:     "nginx",
-	}
-}
-
 // desiredService builds the Service this controller wants for app. It returns a
 // fresh object on every call, so one result can be handed to Create while another
 // is used for comparison without the two interfering.

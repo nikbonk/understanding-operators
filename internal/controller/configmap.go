@@ -16,7 +16,6 @@ import (
 )
 
 const (
-	nginxContainerPort      int32  = 80
 	nginxDefaultServerName  string = "_"
 	nginxDefaultMaxBodySize string = "1m"
 	nginxConfTemplate              = `server {
